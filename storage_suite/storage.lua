@@ -7,19 +7,13 @@ local event = require("event")
 local gpu = comp.gpu
 local thread = require("thread")
 local color = gpu.maxDepth() > 1
-
-local is_modem = false
-
-if comp.modem ~= nil then
-	local modem = comp.modem
-	modem.open(storage_port)
-	if modem.isWireless() then -- Open wireless modem, if it exists
-		modem.setStrength(200)
-		local is_modem = true
-	end
-end
-
+local modem = comp.isAvailable("modem") and comp.modem or setmetatable({}, {__index = function() return function() end end})
 local storage_port = 86
+modem.open(storage_port)
+-- Open wireless modem, if it exists
+if modem.isWireless() then
+	modem.setStrength(200)
+end
 local serial = require("serialization")
 local gui = require("gui")
 
@@ -68,11 +62,7 @@ function build_ledger()
 	end
 	table.sort(global_options, function(a,b) return a[1] < b[1] end)
 	event.push("rebuilt")
-
-	if is_modem == true then
-    	modem.broadcast(storage_port, "UPDATE", serial.serialize(global_options))
-	end
-
+    modem.broadcast(storage_port, "UPDATE", serial.serialize(global_options))
 	return true, global_options
 end
 
@@ -145,9 +135,7 @@ function request_menu(ledger)
 		id,addr,char,code,playerName = event.pullMultiple("key_up","key_down","interrupted","rebuilt","motion")
 		if id=="interrupted" then 
 			gpu.fill(1,1,screenX,screenY," ")
-			if is_modem == true then
-				modem.close(storage_port)
-			end
+			modem.close(storage_port)
 			return
 		end
 		if id=="key_down" then
@@ -278,16 +266,13 @@ end
 function network_request(_,_,from_addr,port,dist,...)
 	local msg = {...}
 	if port ~= storage_port then return end
-
-	if is_modem == true then
-		if msg[1] == "GET" then
-			-- msg[2] is the start index and msg[3] is the end index
-			-- TODO: implement above
-			modem.broadcast(storage_port, "UPDATE", serial.serialize(global_options))
-		elseif msg[1] == "FETCH" then
-			-- msg[2] is the item name and msg[3] is the amount
-			modem.send(from_addr, port, "REQUEST_STATUS", fill_request(msg[2], tonumber(msg[3])))
-		end
+	if msg[1] == "GET" then
+		-- msg[2] is the start index and msg[3] is the end index
+		-- TODO: implement above
+		modem.broadcast(storage_port, "UPDATE", serial.serialize(global_options))
+	elseif msg[1] == "FETCH" then
+		-- msg[2] is the item name and msg[3] is the amount
+		modem.send(from_addr, port, "REQUEST_STATUS", fill_request(msg[2], tonumber(msg[3])))
 	end
 end
 event.listen("modem_message", network_request)
